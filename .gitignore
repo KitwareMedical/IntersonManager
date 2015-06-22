@@ -1,0 +1,10 @@
+# Ignore all back-up files...
+*~
+*.bak
+
+# Exclude QtCreator files ...
+CMakeLists.txt.user*
+
+# IDEA project files
+.idea/
+
