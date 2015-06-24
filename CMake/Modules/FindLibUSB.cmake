@@ -105,7 +105,7 @@ else(PKGCONFIG_LIBUSB_FOUND)
 
   find_library(usb_LIBRARY
                NAMES
-               libusb-1.0 usb-1.0
+               libusb1.0 usb-1.0
                PATHS
                ${LIBUSB_PATH}
                ${LIBUSB_EXTRA_PATHS}

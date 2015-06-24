@@ -20,13 +20,20 @@ set( LIBUSB_SKIP_VERSION_CHECK YES )
 # Find libusb
 find_package( LibUSB REQUIRED )
 
+## If compiling for Android Lollipop (5.0), make Position Independent binaries
+#if( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
+#  message(STATUS "Android: Build binaries as position independent" )
+#  set( CMAKE_POSITION_INDEPENDENT_CODE YES )
+#  set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fPIE -pie" )
+#endif( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
+
 if( LIBUSB_FOUND )
   message( STATUS "LibUSB found.\n"
                   "LIBUSB_HEADER_FILE = ${LIBUSB_HEADER_FILE}\n"
                   "LIBUSB_INCLUDE_DIRS = ${LIBUSB_INCLUDE_DIRS}\n"
                   "LIBUSB_LIBRARIES = ${LIBUSB_LIBRARIES}\n"
                   "LIBUSB_VERSION = ${LIBUSB_VERSION}\n"
-                  "LIBUSB_HAVE_GET_VERSION = ${LIBUSB_HAVE_GET_VERSION}\n" )
+                  "LIBUSB_HAVE_GET_VERSION = ${LIBUSB_HAVE_GET_VERSION}" )
   # Specify libusb include directories
   include_directories( ${LIBUSB_INCLUDE_DIRS} )
 
@@ -45,7 +52,6 @@ if( LIBUSB_FOUND )
 
   # Link against libusb libraries
   if( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
-    message( STATUS "Android platform detected\n" )
     target_link_libraries( ${TARGET_NAME} ${LIBUSB_LIBRARIES} )
   else( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
     target_link_libraries( ${TARGET_NAME} ${LIBUSB_LIBRARIES} pthread )
