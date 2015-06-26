@@ -259,9 +259,9 @@ int main( int argc, char ** argv)
   IntMng = new IntersonManager(handle);
   Tester = new IntersonManagerTest(IntMng);
 
-//    libusb_set_debug(NULL, LIBUSB_LOG_LEVEL_DEBUG);
-//  libusb_set_debug(NULL, LIBUSB_LOG_LEVEL_NONE);
-  libusb_set_debug(NULL, LIBUSB_LOG_LEVEL_ERROR);
+//  libusb_set_debug(NULL, LIBUSB_LOG_LEVEL_DEBUG);
+  libusb_set_debug(NULL, LIBUSB_LOG_LEVEL_NONE);
+//  libusb_set_debug(NULL, LIBUSB_LOG_LEVEL_ERROR);
 //  libusb_set_debug(NULL, LIBUSB_LOG_LEVEL_INFO);
 
   libusb_set_configuration(handle, 1);
@@ -269,14 +269,14 @@ int main( int argc, char ** argv)
 
 
 //  Tester->TestSyncBulk_FrameByFrame_Overview();
-  Tester->TestSyncBulk_FrameByFrame_CheckFrameNumbers();
+//  Tester->TestSyncBulk_FrameByFrame_CheckFrameNumbers();
 
 //  Tester->TestSyncBulk_LineByLine_Overview();
 //  Tester->TestSyncBulk_LineByLine_CheckFrameNumbers();
 //  Tester->TestSyncBulk_LineByLine_CheckLengths();
 
 //  TestAsyncBulk_FrameByFrame();
-//  TestAsyncBulk_FrameByFrame_MultiThread();
+  TestAsyncBulk_FrameByFrame_MultiThread();
 
 
   std::cout<<"Done"<<std::endl;

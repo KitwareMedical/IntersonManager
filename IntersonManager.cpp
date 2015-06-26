@@ -746,6 +746,8 @@ bool IntersonManager::startAcquisitionRoutine(int acquisitionMode)
     startRFMode();
   }
 
+  usleep(2e5);
+
   return true;
 
 }
