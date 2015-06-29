@@ -432,7 +432,7 @@ bool IntersonManager::setMotorSpeed(float fps)
   }
   else
   {
-    std::cout<<"Motor speed not supported.\nSupported values are: 10.0, 12.5, 15.0"<<std::endl;
+    std::cerr<<"Motor speed not supported.\nSupported values are: 10.0, 12.5, 15.0"<<std::endl;
     return false;
   }
   return true;
@@ -746,7 +746,6 @@ bool IntersonManager::startAcquisitionRoutine(int acquisitionMode)
     startRFMode();
   }
 
-  usleep(2e5);
 
   return true;
 

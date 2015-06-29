@@ -210,6 +210,8 @@ void TestAsyncBulk_FrameByFrame_MultiThread()
   std::cout<<"Start acquisition"<<std::endl;
   IntMng->startAcquisitionRoutine(0);
 
+  // Sufficient to not have the resource busy error, but frame count doesn't start at 0
+  usleep(2e5);
 
   int r;
 
