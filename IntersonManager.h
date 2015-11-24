@@ -8,18 +8,24 @@
 
 #include <iostream>
 #include <libusb.h>
+#include "ezusb.h"
+
 
 typedef uint8_t uInt8;
 typedef uint16_t uInt16;
 typedef uint32_t uInt32;
-
 
 class IntersonManager
 {
 
 public:
 
+  IntersonManager();
+  IntersonManager(const char* pathOfFirmware);
   IntersonManager(libusb_device_handle * handle);
+
+  virtual ~IntersonManager();
+
 
   // Interson-specific control requests
 
@@ -46,18 +52,36 @@ public:
 
   // Routine and helper functions
   void Error(int err);
-  libusb_device_handle * getHandle() const;
+  libusb_device_handle * getHandle() ;
   bool initializeProbe();
   void setVerbose(bool verbose);
   bool startAcquisitionRoutine(int acquisitionMode);
   bool stopAcquisitionRoutine();
 
-private:
+protected:
 
-  libusb_device_handle * m_Handle;
-  static const int VENDORCMD_TIMEOUT = 1000;
-  bool m_Verbose;
-  int m_AcquisitionMode;
+  bool ConnectIntersonUSProbe();
+
+  bool TryConnectIntersonUSProbe();
+
+  bool FindIntersonUSProbe();
+
+  bool UploadFirmwareToIntersonUSProbe(const char* path);
+
+  static const bool InitializeLibUSB();
+
+  static const void ExitLibUSB();
+
+  static const void ReleaseUSBInterface();
+
+private:
+  std::string           m_PathOfFirmware;
+  bool                  m_Verbose;
+  int                   m_AcquisitionMode;
+  int                   m_Status;
+  bool                  m_IsLibUSBConnected;
+  static const int      VENDORCMD_TIMEOUT = 1000;
+
 
 };
 

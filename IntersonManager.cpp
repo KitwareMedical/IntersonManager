@@ -6,18 +6,40 @@
 #include <unistd.h>
 #include "IntersonManager.h"
 
+libusb_device_handle * m_gUSBHandle;
+
+IntersonManager::IntersonManager()
+{
+  this->m_IsLibUSBConnected = false;
+  IntersonManager("IntersonFMW_total.bix");
+}
+
+IntersonManager::IntersonManager(const char* pathOfFirmware)
+{
+  this->m_PathOfFirmware = pathOfFirmware;
+  this->ConnectIntersonUSProbe();
+}
 
 IntersonManager::IntersonManager(libusb_device_handle * handle)
 {
   if(handle != NULL)
   {
-    this->m_Handle = handle;
+    m_gUSBHandle = handle;
   }
   else
   {
     std::cerr<<"Invalid handle passed"<<std::endl;
   }
   setVerbose(false);
+}
+
+IntersonManager::~IntersonManager()
+{
+  if(this->m_IsLibUSBConnected)
+    {
+    ReleaseUSBInterface();
+    ExitLibUSB();
+    }
 }
 
 // This function initializes the Analog TGC (address 0x700 to 0x702)
@@ -35,7 +57,7 @@ bool IntersonManager::initializeAnalogTGC(uInt8 TGC[3])
   for (uInt16 i = 0; i < 3; i++) {
     data[0] = TGC[i];
     // If one of the transfer fails, r will be equal to 0 at the end
-    r = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue+i, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+    r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue+i, 0x00, data, wLength, VENDORCMD_TIMEOUT);
     if ( r != 1 )
     {
       std::cerr<<"Command initializeAnalogTGC failed"<<std::endl;
@@ -64,7 +86,7 @@ bool IntersonManager::initializeDigitalTGC(uInt8 TGC[10])
     // Trick for the addresses, because the aren't consecutive
     uInt16 offset = i<=1 ? i : i+6;
     // If one of the transfer fails, r will be equal to 0 at the end
-    r = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue+offset, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+    r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue+offset, 0x00, data, wLength, VENDORCMD_TIMEOUT);
     if ( r != 1 )
     {
       std::cerr<<"Command initializeDigitalTGC failed"<<std::endl;
@@ -91,7 +113,7 @@ bool IntersonManager::initializeMotorSpeed(uInt8 speedArray[7])
   {
     data[0] = speedArray[i];
     // If one of the transfer fails, r will be equal to 0 at the end
-    r = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue+i, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+    r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue+i, 0x00, data, wLength, VENDORCMD_TIMEOUT);
     // Check if they are sent correctly
     if ( r != 1 )
     {
@@ -113,7 +135,7 @@ bool IntersonManager::initializeSamplerInc()
   uInt8 * data = new uInt8[wLength];
   data[0] = 64;
 
-  int r = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+  int r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
   if ( r == wLength )
   {
     if(this->m_Verbose) std::cout<<"Command initializeSamplerInc successfully sent"<<std::endl;
@@ -139,7 +161,7 @@ bool IntersonManager::readFPGAVersion(uInt8 * data)
   {
     data = new uInt8[wLength];
   }
-  int r = libusb_control_transfer(this->m_Handle, 0xC0, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+  int r = libusb_control_transfer(m_gUSBHandle, 0xC0, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
   if ( r == wLength )
   {
     if (this->m_Verbose) std::cout << "Command readFPGAVersion successfully sent" << std::endl;
@@ -165,7 +187,7 @@ bool IntersonManager::readHardButton(uInt8 * data)
     std::cout<<"Allocating data"<<std::endl;
     data = new uInt8[wLength];
   }
-  int r = libusb_control_transfer(this->m_Handle, 0xC0, 0xDA, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+  int r = libusb_control_transfer(m_gUSBHandle, 0xC0, 0xDA, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
   std::cout<<"Data = "<<*data<<std::endl;
   if ( r == wLength )
   {
@@ -188,7 +210,7 @@ bool IntersonManager::readOEMSpace(int address, int length, uInt8 * data)
   {
     data = new uInt8[length];
   }
-  int r = libusb_control_transfer(this->m_Handle, 0xC0, 0xD7, (uInt16)address, 0x00, data, (uInt16)length, VENDORCMD_TIMEOUT);
+  int r = libusb_control_transfer(m_gUSBHandle, 0xC0, 0xD7, (uInt16)address, 0x00, data, (uInt16)length, VENDORCMD_TIMEOUT);
   if ( r == length )
   {
     if(this->m_Verbose)
@@ -232,7 +254,7 @@ bool IntersonManager::sendHighVoltage(int highVoltage)
     return false;
   }
 
-  int r = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+  int r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
   if ( r == wLength )
   {
     if(this->m_Verbose) std::cout<<"Command sendHighVoltage successfully sent"<<std::endl;
@@ -256,11 +278,11 @@ bool IntersonManager::setDynamicRange()
   uInt8 * data = new uInt8[wLength];
   data[0] = 39;
 
-  int r1 = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+  int r1 = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
 
   wValue = 0x0901;
   data[0] = 25;
-  int r2 = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+  int r2 = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
 
   if ( r1 == wLength && r2 == wLength)
   {
@@ -292,7 +314,7 @@ bool IntersonManager::setFrequencyBandPassFilter(int frequencyIndex)
     return false;
   }
 
-  int r = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+  int r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
   if ( r == wLength )
   {
     if(this->m_Verbose) std::cout<<"Command setFrequencyBandPassFilter successfully sent"<<std::endl;
@@ -324,7 +346,8 @@ bool IntersonManager::setFrequencyIndex(int frequencyIndex)
     return false;
   }
 
-  int r = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+  int r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+
   if ( r == wLength )
   {
     if(this->m_Verbose) std::cout<<"Command setFrequencyIndex successfully sent"<<std::endl;
@@ -346,14 +369,12 @@ bool IntersonManager::setFrequencyInit()
   uInt16 wLength = 1;
   uInt16 wValue = 0x0101;
   uInt8 * data = new uInt8[wLength];
+  uInt8 data2;
   data[0] = 0;
-
-  int r1 = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
-
+  int r1 = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
   wValue = 0x0300;
   data[0] = 0;
-  int r2 = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
-
+  int r2 = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
   if ( r1 == wLength && r2 == wLength)
   {
     if(this->m_Verbose) std::cout<<"Command setFrequencyInit successfully sent"<<std::endl;
@@ -376,7 +397,7 @@ bool IntersonManager::setEnableHighVoltage(bool enable)
   uInt8 * data = new uInt8[wLength];
   data[0] = (uInt8) (enable ? 1 : 0);
 
-  int r = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+  int r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
   if ( r == wLength )
   {
     if(this->m_Verbose) std::cout<<"Command setEnableHighVoltage successfully sent"<<std::endl;
@@ -399,7 +420,7 @@ bool IntersonManager::setEnableRFDecimator(bool enable)
   uInt8 * data = new uInt8[wLength];
   data[0] = (uInt8) (enable ? 1 : 0);
 
-  int r = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+  int r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
   if ( r == wLength )
   {
     if(this->m_Verbose) std::cout<<"Command setEnableRFDecimator successfully sent"<<std::endl;
@@ -448,7 +469,7 @@ bool IntersonManager::setStartMotor(bool start)
   uInt8 * data = new uInt8[wLength];
   data[0] = (uInt8) (start ? 1 : 0);
 
-  int r = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+  int r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
   if ( r == wLength )
   {
     if(this->m_Verbose) std::cout<<"Command setStartMotor successfully sent"<<std::endl;
@@ -471,7 +492,7 @@ bool IntersonManager::startBMode()
   uInt8 * data = new uInt8[wLength];
   data[0] = 1;
 
-  int r = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+  int r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
   if ( r == wLength )
   {
     if(this->m_Verbose) std::cout<<"Command startBMode successfully sent"<<std::endl;
@@ -494,7 +515,7 @@ bool IntersonManager::startRFMode()
   uInt8 * data = new uInt8[wLength];
   data[0] = 2;
 
-  int r = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+  int r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
   if ( r == wLength )
   {
     if(this->m_Verbose) std::cout<<"Command startRFMode successfully sent"<<std::endl;
@@ -518,7 +539,7 @@ bool IntersonManager::stopAcquisition()
   uInt8 * data = new uInt8[wLength];
   data[0] = 0;
 
-  int r = libusb_control_transfer(this->m_Handle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+  int r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue, 0x00, data, wLength, VENDORCMD_TIMEOUT);
   if ( r == wLength )
   {
     if(this->m_Verbose) std::cout<<"Command stopAcquisition successfully sent"<<std::endl;
@@ -542,7 +563,7 @@ bool IntersonManager::writeOEMSpace(int address, int length, uInt8 * data)
     return false;
   }
 
-  int r = libusb_control_transfer(this->m_Handle, 0xC0, 0xD7, (uInt16)address, 0x00, data, (uInt16)length, VENDORCMD_TIMEOUT);
+  int r = libusb_control_transfer(m_gUSBHandle, 0xC0, 0xD7, (uInt16)address, 0x00, data, (uInt16)length, VENDORCMD_TIMEOUT);
   if ( r == length ) {
     if(this->m_Verbose) std::cout<<"Command writeOEMSpace successfully sent"<<std::endl;
     return true;
@@ -553,11 +574,11 @@ bool IntersonManager::writeOEMSpace(int address, int length, uInt8 * data)
 
 }
 
-
-
-libusb_device_handle * IntersonManager::getHandle() const
+libusb_device_handle * IntersonManager::getHandle()
 {
-  return m_Handle;
+  std::cout << "IntersonManager::" << this << std::endl;
+  std::cout << "GetHandle:: " << m_gUSBHandle << std::endl;
+  return m_gUSBHandle;
 }
 
 void IntersonManager::Error(int err)
@@ -691,9 +712,7 @@ bool IntersonManager::initializeProbe()
   sendHighVoltage(100);
 //  sendHighVoltage(150);
 //  sendHighVoltage(178);
-
-
-
+  this->m_IsLibUSBConnected = true;
   return true;
 }
 
@@ -779,4 +798,131 @@ bool IntersonManager::stopAcquisitionRoutine()
   return true;
 }
 
+
+// protected
+
+bool IntersonManager::ConnectIntersonUSProbe()
+{
+  if(!TryConnectIntersonUSProbe())
+    {
+    // Search an attached Interson USBProbe
+    if(!FindIntersonUSProbe())
+      {
+      std::cerr<<"No Interson USB Probe is attached."<<std::endl;
+      return false;
+      }
+
+    // Upload the firmware to an attached USProbe
+    if(!UploadFirmwareToIntersonUSProbe(this->m_PathOfFirmware.c_str()))
+      {
+      std::cerr<<"Failed Uploaded the firmware"<<std::endl;
+      return false;
+      }
+
+    // Retry to connect an attached Interson USB Probe
+    if(!TryConnectIntersonUSProbe())
+      {
+      std::cerr<<"Cannot connected the attached Interson USB Probe."<<std::endl;
+      return false;
+      }
+    }
+
+  return true;
+}
+
+
+bool IntersonManager::TryConnectIntersonUSProbe()
+{
+  InitializeLibUSB();
+  m_gUSBHandle = libusb_open_device_with_vid_pid(NULL, 0x1921, 0x0090);
+
+ if(m_gUSBHandle == NULL)
+    {
+    std::cerr<<"Impossible to open device 1921:0090"<<std::endl;
+    ExitLibUSB();
+    return this->m_IsLibUSBConnected = false;
+    }
+
+  return true;
+
+}
+
+bool IntersonManager::FindIntersonUSProbe()
+{
+  InitializeLibUSB();
+
+  libusb_device **devs;
+
+  if (libusb_get_device_list(NULL, &devs) < 0)
+    {
+    std::cerr << "No USB Device" << std::endl;
+    ExitLibUSB();
+    return this->m_IsLibUSBConnected = false;
+    }
+
+  m_gUSBHandle = libusb_open_device_with_vid_pid(NULL, 0x1921, 0x9090);
+  if (m_gUSBHandle == NULL)
+  {
+    std::cerr << "libusb_open() failed\n" <<std::endl;
+    ExitLibUSB();
+    return this->m_IsLibUSBConnected = false;
+  }
+
+  /* We need to claim the first interface */
+  libusb_set_auto_detach_kernel_driver(m_gUSBHandle, 1);
+  this->m_Status = libusb_claim_interface(m_gUSBHandle, 0);
+
+  if (this->m_Status != LIBUSB_SUCCESS)
+    {
+    std::cerr << "libusb_claim_interface failed: %s\n" << libusb_error_name(this->m_Status) << std::endl;
+    ExitLibUSB();
+    return this->m_IsLibUSBConnected = false;
+    }
+
+  return true;
+}
+
+bool IntersonManager::UploadFirmwareToIntersonUSProbe(const char* path)
+{
+
+  this->m_Status = ezusb_load_ram(m_gUSBHandle, this->m_PathOfFirmware.c_str(),
+                                  3, IMG_TYPE_BIX, 0);
+
+  if (this->m_Status < 0)
+    {
+      std::cerr<<"ezusb_load_ram() failed: "<< libusb_error_name(this->m_Status) << std::endl;
+      ExitLibUSB();
+      return this->m_IsLibUSBConnected = false;
+    }
+  ReleaseUSBInterface();
+  ExitLibUSB();
+  this->m_IsLibUSBConnected = false;
+  usleep(3e6);
+  return true;
+}
+
+const bool IntersonManager::InitializeLibUSB()
+{
+  int status = libusb_init(NULL);
+  if (status < 0)
+    {
+      std::cerr<<"libusb_init() failed: "<< libusb_error_name(status) << std::endl;
+      ExitLibUSB();
+      return false;
+    }
+
+  libusb_set_debug(NULL, verbose);
+  return true;
+}
+
+const void IntersonManager::ExitLibUSB()
+{
+  libusb_exit(NULL);
+}
+
+const void IntersonManager::ReleaseUSBInterface()
+{
+  libusb_release_interface(m_gUSBHandle, 0);
+  libusb_close(m_gUSBHandle);
+}
 
