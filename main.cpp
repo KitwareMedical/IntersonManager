@@ -73,38 +73,21 @@ void * EventHandlingLoop(void *);
 
 int main( int argc, char ** argv)
 {
-  int r;
-  r = libusb_init(NULL);
-  if (r < 0)
-  {
-    return r;
-  }
 
-  libusb_device ** deviceList;
-  ssize_t cnt;
-  cnt = libusb_get_device_list(NULL, &deviceList);
-  if (cnt < 0)
-    return (int) cnt;
-  std::cout<<"Number of devices = "<<cnt<<std::endl;
-
-
-  libusb_device_handle * handle = libusb_open_device_with_vid_pid(NULL, 0x1921, 0x0090);
-  if(!handle)
-  {
-    std::cerr<<"Impossible to open device 1921:0090"<<std::endl;
-    return -1;
-  }
-
-  IntMng = new IntersonManager(handle);
+  IntMng = new IntersonManager();
   Tester = new IntersonManagerTest(IntMng);
+  //libusb_device_handle * handle = IntMng->getHandle();
 
 //  libusb_set_debug(NULL, LIBUSB_LOG_LEVEL_DEBUG);
   libusb_set_debug(NULL, LIBUSB_LOG_LEVEL_NONE);
 //  libusb_set_debug(NULL, LIBUSB_LOG_LEVEL_ERROR);
 //  libusb_set_debug(NULL, LIBUSB_LOG_LEVEL_INFO);
 
-  libusb_set_configuration(handle, 1);
-  libusb_claim_interface(handle, 0);
+//  libusb_set_configuration(handle, 1);
+//  libusb_claim_interface(handle, 0);
+
+  libusb_set_configuration(IntMng->getHandle(), 1);
+  libusb_claim_interface(IntMng->getHandle(), 0);
 
 
 //  Tester->TestSyncBulk_FrameByFrame_Overview();
@@ -121,8 +104,8 @@ int main( int argc, char ** argv)
   std::cout<<"Done"<<std::endl;
 
 
-  libusb_release_interface(handle, 0);
-  libusb_close(handle);
+//  libusb_release_interface(handle, 0);
+//  libusb_close(handle);
 
   pthread_join(elt, NULL);
 
@@ -138,9 +121,11 @@ int main( int argc, char ** argv)
     std::cout << std::hex << std::endl << std::endl;
   }
 
-  libusb_free_device_list(deviceList, 1);
+  //libusb_free_device_list(deviceList, 1);
 
-  libusb_exit(NULL);
+//  libusb_exit(NULL);
+  delete Tester;
+  delete IntMng;
   return 0;
 }
 
