@@ -27,6 +27,9 @@ find_package( LibUSB REQUIRED )
 #  set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fPIE -pie" )
 #endif( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
 
+set(EZUSB_SOURCE ${CMAKE_SOURCE_DIR}/ezusb.c
+                 ${CMAKE_SOURCE_DIR}/ezusb.h)
+
 if( LIBUSB_FOUND )
   message( STATUS "LibUSB found.\n"
                   "LIBUSB_HEADER_FILE = ${LIBUSB_HEADER_FILE}\n"
@@ -44,6 +47,7 @@ if( LIBUSB_FOUND )
                                ${CMAKE_SOURCE_DIR}/IntersonManager.h
                                ${CMAKE_SOURCE_DIR}/IntersonManagerTest.cpp
                                ${CMAKE_SOURCE_DIR}/IntersonManagerTest.h
+                               ${EZUSB_SOURCE}
                                )
 
   # Create target
