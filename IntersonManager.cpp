@@ -576,8 +576,6 @@ bool IntersonManager::writeOEMSpace(int address, int length, uInt8 * data)
 
 libusb_device_handle * IntersonManager::getHandle()
 {
-  std::cout << "IntersonManager::" << this << std::endl;
-  std::cout << "GetHandle:: " << m_gUSBHandle << std::endl;
   return m_gUSBHandle;
 }
 
