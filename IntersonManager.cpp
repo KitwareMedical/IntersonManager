@@ -54,17 +54,22 @@ bool IntersonManager::initializeAnalogTGC(uInt8 TGC[3])
   uInt8 * data = new uInt8[wLength];
 
   // Send the 3 commands
-  for (uInt16 i = 0; i < 3; i++) {
+  for (uInt16 i = 0; i < 3; i++)
+    {
     data[0] = TGC[i];
     // If one of the transfer fails, r will be equal to 0 at the end
     r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue+i, 0x00, data, wLength, VENDORCMD_TIMEOUT);
     if ( r != 1 )
-    {
+      {
       std::cerr<<"Command initializeAnalogTGC failed"<<std::endl;
       return false;
+      }
     }
-  }
-  if (this->m_Verbose) std::cout << "Command initializeAnalogTGC successfully sent" << std::endl;
+
+  if (this->m_Verbose)
+    {
+    std::cout << "Command initializeAnalogTGC successfully sent" << std::endl;
+    }
   return true;
 }
 
@@ -922,5 +927,66 @@ const void IntersonManager::ReleaseUSBInterface()
 {
   libusb_release_interface(m_gUSBHandle, 0);
   libusb_close(m_gUSBHandle);
+}
+
+void IntersonManager::PrintDevice()
+{
+  uint8_t string_index[3];
+  uint8_t path[8];
+  char string[128];
+
+  if(m_gUSBHandle != NULL)
+    {
+
+    libusb_device *dev = libusb_get_device(m_gUSBHandle);
+    printf("\n");
+    struct libusb_device_descriptor desc;
+    int r = libusb_get_device_descriptor(dev, &desc);
+    if (r < 0)
+      {
+      fprintf(stderr, "failed to get device descriptor");
+      return;
+      }
+
+    string_index[0] = desc.iManufacturer;
+    string_index[1] = desc.iProduct;
+    string_index[2] = desc.iSerialNumber;
+    printf("%04x:%04x (bus %d, device %d)",
+           desc.idVendor, desc.idProduct,
+           libusb_get_bus_number(dev), libusb_get_device_address(dev));
+
+    r = libusb_get_port_numbers(dev, path, sizeof(path));
+    if (r > 0) {
+      printf(" path: %d", path[0]);
+      for (int j = 1; j < r; j++)
+        printf(".%d", path[j]);
+    }
+    printf("\n");
+
+    libusb_device_handle *handle;
+    r = libusb_open(dev, &handle);
+
+    if(r == LIBUSB_ERROR_ACCESS)
+      {
+      std::cout<<" Insufficient permission"<<std::endl;
+      }
+
+    if (r == 0 && handle != NULL)
+      {
+      for (int k = 0; k < 3; k++)
+        {
+        if (string_index[k] == 0)
+          {
+          continue;
+          }
+        if (libusb_get_string_descriptor_ascii(handle, string_index[k], (unsigned char *) string, 128) >= 0)
+          {
+          printf("String Desc(0x%02X): \"%s\"\n", string_index[k], string);
+          }
+        }
+      libusb_close(handle);
+      }
+    }
+
 }
 

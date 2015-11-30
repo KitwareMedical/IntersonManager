@@ -58,6 +58,8 @@ public:
   bool startAcquisitionRoutine(int acquisitionMode);
   bool stopAcquisitionRoutine();
 
+  void PrintDevice();
+
 protected:
 
   bool ConnectIntersonUSProbe();
