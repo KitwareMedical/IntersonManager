@@ -86,10 +86,6 @@ int main( int argc, char ** argv)
 //  libusb_set_configuration(handle, 1);
 //  libusb_claim_interface(handle, 0);
 
-  libusb_set_configuration(IntMng->getHandle(), 1);
-  libusb_claim_interface(IntMng->getHandle(), 0);
-
-
 //  Tester->TestSyncBulk_FrameByFrame_Overview();
 //  Tester->TestSyncBulk_FrameByFrame_CheckFrameNumbers();
 
