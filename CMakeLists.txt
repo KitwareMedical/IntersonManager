@@ -5,6 +5,9 @@
 
 cmake_minimum_required( VERSION 2.8 )
 
+find_package(ITK REQUIRED)
+include(${ITK_USE_FILE})
+
 # Set up project
 set( PROJECT_NAME "IntersonManager" )
 project( ${PROJECT_NAME} )
@@ -56,10 +59,33 @@ if( LIBUSB_FOUND )
 
   # Link against libusb libraries
   if( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
-    target_link_libraries( ${TARGET_NAME} ${LIBUSB_LIBRARIES} )
+    target_link_libraries( ${TARGET_NAME} ${LIBUSB_LIBRARIES} ${ITK_LIBRARIES} )
   else( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
-    target_link_libraries( ${TARGET_NAME} ${LIBUSB_LIBRARIES} pthread )
+    target_link_libraries( ${TARGET_NAME} ${LIBUSB_LIBRARIES} ${ITK_LIBRARIES} pthread )
   endif( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
+
+
+  # Test program for US spectroscopy
+
+  # Project CypressManager
+  set( USSpectrascopy_SOURCES ${CMAKE_SOURCE_DIR}/USSpectrascopy.cpp
+                              ${CMAKE_SOURCE_DIR}/IntersonManager.cpp
+                              ${CMAKE_SOURCE_DIR}/IntersonManager.h
+                              ${CMAKE_SOURCE_DIR}/IntersonManagerTest.cpp
+                              ${CMAKE_SOURCE_DIR}/IntersonManagerTest.h
+                              ${EZUSB_SOURCE}
+                              )
+
+  # Create target
+  add_executable( USSpectrascopy ${USSpectrascopy_SOURCES} )
+
+  # Link against libusb libraries
+  if( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
+    target_link_libraries( USSpectrascopy ${LIBUSB_LIBRARIES} ${ITK_LIBRARIES} )
+  else( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
+    target_link_libraries( USSpectrascopy ${LIBUSB_LIBRARIES} ${ITK_LIBRARIES} pthread )
+  endif( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
+
 
   # Build libusb samples
 
