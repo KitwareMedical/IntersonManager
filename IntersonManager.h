@@ -9,6 +9,8 @@
 #include <iostream>
 #include <libusb.h>
 #include "ezusb.h"
+#include <map>
+#include "itkTimeProbesCollectorBase.h"
 
 
 typedef uint8_t uInt8;
@@ -60,6 +62,10 @@ public:
 
   void PrintDevice();
 
+  int AcquireUSspectroscopyFrames(int frequency[], int* power);
+
+  int AcquireUSspectroscopyFrame(int frequency, int power);
+
 protected:
 
   bool ConnectIntersonUSProbe();
@@ -76,6 +82,8 @@ protected:
 
   static const void ReleaseUSBInterface();
 
+  void InitializeLookupTables();
+
 private:
   std::string           m_PathOfFirmware;
   bool                  m_Verbose;
@@ -83,6 +91,11 @@ private:
   int                   m_Status;
   bool                  m_IsLibUSBConnected;
   static const int      VENDORCMD_TIMEOUT = 1000;
+  std::map<float, int>  m_LookUpFrequencyIndex;
+  std::map<float, int>  m_LookUpBandPassFilerIndexGP35;
+  std::map<float, int>  m_LookUpBandPassFilerIndexGP75;
+
+  itk::TimeProbesCollectorBase   collector;
 
 
 };

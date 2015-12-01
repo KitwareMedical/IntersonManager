@@ -6,7 +6,26 @@
 #include <unistd.h>
 #include "IntersonManager.h"
 
+#include <time.h>
+
+#ifndef ARRAYSIZE
+#define ARRAYSIZE(A) (sizeof(A)/sizeof((A)[0]))
+#endif
+
 libusb_device_handle * m_gUSBHandle;
+IntersonManager* m_gIntersonManager;
+
+clock_t begin_time;
+
+unsigned char endpoint = 0x82;
+unsigned char * buffer;// = new unsigned char[transferSize];
+int transferred = 1;
+int transferSize = 241*1024;
+
+void LibUSBTransferCallback(struct libusb_transfer * transfer)
+{
+  std::cout<<"LibUSBTransferCallback is called"<<std::endl;
+}
 
 IntersonManager::IntersonManager()
 {
@@ -18,6 +37,7 @@ IntersonManager::IntersonManager(const char* pathOfFirmware)
 {
   this->m_PathOfFirmware = pathOfFirmware;
   this->ConnectIntersonUSProbe();
+  m_gIntersonManager = this;
 }
 
 IntersonManager::IntersonManager(libusb_device_handle * handle)
@@ -31,6 +51,7 @@ IntersonManager::IntersonManager(libusb_device_handle * handle)
     std::cerr<<"Invalid handle passed"<<std::endl;
   }
   setVerbose(false);
+  m_gIntersonManager = this;
 }
 
 IntersonManager::~IntersonManager()
@@ -830,6 +851,9 @@ bool IntersonManager::ConnectIntersonUSProbe()
       }
     }
 
+  libusb_set_configuration(m_gUSBHandle, 1);
+  libusb_claim_interface(m_gUSBHandle, 0);
+
   return true;
 }
 
@@ -931,6 +955,7 @@ const void IntersonManager::ReleaseUSBInterface()
 
 void IntersonManager::PrintDevice()
 {
+  std::cout << "Print Device" << std::endl;
   uint8_t string_index[3];
   uint8_t path[8];
   char string[128];
@@ -987,6 +1012,186 @@ void IntersonManager::PrintDevice()
       libusb_close(handle);
       }
     }
+}
+
+int IntersonManager::AcquireUSspectroscopyFrames(int *frequencies, int *powers)
+{
+  this->collector.Start("01.Data_Set_With_MotorControl");
+
+  //buffer = new unsigned char[transferSize];
+  uInt8 motorSpeed15[] = {0x7A, 0x0D, 0x00, 0x00, 0x80, 0xA4, 0x32}; // 15.0 fps
+  this->collector.Start("02.initializeMotorSpeed");
+  this->initializeMotorSpeed(motorSpeed15);
+  this->collector.Stop("02.initializeMotorSpeed");
+
+//  int numberOfFrequency = ARRAYSIZE(frequencies);
+//  int numberOfPower     = ARRAYSIZE(powers);
+
+  int numberOfFrequency = 6;//(sizeof(frequencies)/sizeof(int));
+  int numberOfPower     = 6;//(sizeof(powers)/sizeof(int));
+
+  std::cout << numberOfFrequency << std::endl;
+  std::cout << numberOfPower << std::endl;
+
+  // Enable High Voltage
+  this->collector.Start("03.setEnableHighVoltage_true");
+  this->setEnableHighVoltage(true);
+  this->collector.Stop("03.setEnableHighVoltage_true");
+
+  // Enable RF decimator ( for probe 3.5MHz and RF acquisition)
+  if(m_AcquisitionMode == 1)
+    {
+    this->collector.Start("04.setEnableRFDecimator_true");
+    this->setEnableRFDecimator(true);
+    this->collector.Stop("04.setEnableRFDecimator_true");
+    }
+
+  // Initialize Sampler Inc
+  this->collector.Start("05.initializeSamplerInc");
+  this->initializeSamplerInc();
+  this->collector.Stop("05.initializeSamplerInc");
+
+  // Run Motor
+  this->collector.Start("06.setStartMotor_Start");
+  this->setStartMotor(true);
+  sleep(1);
+  this->collector.Stop("06.setStartMotor_Start");
+
+  this->collector.Start("07.Data_Set");
+  for(int findex = 0; findex < 5; ++findex)
+    {
+    for(int pindex = 0; pindex < 1; ++pindex)
+      {
+      AcquireUSspectroscopyFrame(frequencies[findex], powers[pindex]);
+      //std::cout << frequencies[findex] <<  powers[pindex] <<std::endl;
+      }
+    }
+  this->collector.Stop("07.Data_Set");
+
+
+  // Stop Motor
+  this->collector.Start("14.setStartMotor_Stop");
+  this->setStartMotor(false);
+  this->collector.Stop("14.setStartMotor_Stop");
+
+  // Disable High Voltage
+  this->collector.Start("15.setEnableHighVoltage_false");
+  this->setEnableHighVoltage(false);
+  this->collector.Stop("15.setEnableHighVoltage_false");
+
+  // Disable RF decimator ( if done with RF acquisition)
+  if(m_AcquisitionMode == 1)
+    {
+    this->collector.Start("16.setEnableRFDecimator_false");
+    setEnableRFDecimator(false);
+    this->collector.Stop("16.setEnableRFDecimator_false");
+    }
+
+  this->collector.Stop("01.Data_Set_With_MotorControl");
+  this->collector.Report();
+  return 1;
+}
+
+int IntersonManager::AcquireUSspectroscopyFrame(int frequency, int power)
+{
+  this->collector.Start("08.Single_Frame");
+  // Terminal max size
+  int maxTermRow = 25;
+  int maxTermColumn = 25;
+  int nRows = 241;
+  int nColumn = 1024;
+
+  unsigned char endpoint = 0x82;
+  unsigned int BULK_TRANSFER_TIMEOUT = 1000;
+  buffer = new unsigned char[transferSize];
+
+  // 1. Set Frequency
+  this->collector.Start("09.SetFrequency");
+  this->setFrequencyIndex(frequency);
+  this->collector.Stop("09.SetFrequency");
+  // 2. Set Power
+  this->collector.Start("10.SetPower");
+  this->sendHighVoltage(power);
+  this->collector.Stop("10.SetPower");
+  // 3  Run Data
+  this->collector.Start("11.RunRFMode");
+  this->startRFMode();
+  this->collector.Stop("11.RunRFMode");
+  // 4. Waiting for a new Frame (blocking mode)
+  this->collector.Start("12.GetFrame");
+  int r = libusb_bulk_transfer(m_gUSBHandle, endpoint, buffer, transferSize, &transferred, BULK_TRANSFER_TIMEOUT);
+  this->collector.Stop("12.GetFrame");
+  std::cout << "Output::" << r <<", "<< transferred<<", " <<  std::endl;
+
+  // Overview of the frame
+//    for (int k = 0; k < nRows * nColumn; k += nColumn*(nRows/maxTermRow))
+//    {
+//      for (int j = 0; j < nColumn; j+= nColumn/maxTermColumn)
+//      {
+//        std::cout << +buffer[k+j] << " ";
+//      }
+//      std::cout << std::endl;
+//    }
+//    std::cout << std::endl;
+  // 5. Stop Data
+  this->collector.Start("13.StopRFMode");
+  this->stopAcquisition();
+  this->collector.Stop("13.StopRFMode");
+  delete buffer;
+  buffer = NULL;
+  this->collector.Stop("08.Single_Frame");
+
+  return 1;
+}
+
+
+void IntersonManager::InitializeLookupTables()
+{
+  this->m_LookUpFrequencyIndex.clear();
+  this->m_LookUpFrequencyIndex[20.0]        =  0; // 20.0 MHz
+  this->m_LookUpFrequencyIndex[15.0]        =  1; // 15.0 MHz
+  this->m_LookUpFrequencyIndex[12.0]        =  2; // 12.0 MHz
+  this->m_LookUpFrequencyIndex[10.0]        =  3; // 10.0 MHz
+  this->m_LookUpFrequencyIndex[8.57]        =  4; // 8.57 MHz
+  this->m_LookUpFrequencyIndex[7.50]        =  5; // 7.50 MHz
+  this->m_LookUpFrequencyIndex[6.67]        =  6; // 6.67 MHz
+  this->m_LookUpFrequencyIndex[6.00]        =  7; // 6.00 MHz
+  this->m_LookUpFrequencyIndex[5.45]        =  8; // 5.45 MHz
+  this->m_LookUpFrequencyIndex[5.00]        =  9; // 5.00 MHz
+  this->m_LookUpFrequencyIndex[4.62]        = 10; // 4.62 MHz
+  this->m_LookUpFrequencyIndex[4.29]        = 11; // 4.29 MHz
+  this->m_LookUpFrequencyIndex[4.00]        = 12; // 4.00 MHz
+  this->m_LookUpFrequencyIndex[3.75]        = 13; // 3.75 MHz
+  this->m_LookUpFrequencyIndex[3.53]        = 14; // 3.53 MHz
+  this->m_LookUpFrequencyIndex[3.33]        = 15; // 3.33 MHz
+  this->m_LookUpFrequencyIndex[3.16]        = 16; // 3.16 MHz
+  this->m_LookUpFrequencyIndex[3.00]        = 17; // 3.00 MHz
+  this->m_LookUpFrequencyIndex[2.86]        = 18; // 2.86 MHz
+  this->m_LookUpFrequencyIndex[2.73]        = 19; // 2.73 MHz
+  this->m_LookUpFrequencyIndex[2.61]        = 20; // 2.61 MHz
+  this->m_LookUpFrequencyIndex[2.50]        = 21; // 2.50 MHz
+  this->m_LookUpFrequencyIndex[2.40]        = 22; // 2.40 MHz
+  this->m_LookUpFrequencyIndex[2.31]        = 23; // 2.31 MHz
+  this->m_LookUpFrequencyIndex[2.22]        = 24; // 2.22 MHz
+  this->m_LookUpFrequencyIndex[2.14]        = 25; // 2.14 MHz
+  this->m_LookUpFrequencyIndex[2.07]        = 26; // 2.07 MHz
+  this->m_LookUpFrequencyIndex[2.00]        = 27; // 2.00 MHz
+  this->m_LookUpFrequencyIndex[1.94]        = 28; // 1.94 MHz
+  this->m_LookUpFrequencyIndex[1.88]        = 29; // 1.88 MHz
+  this->m_LookUpFrequencyIndex[1.82]        = 30; // 1.82 MHz
+  this->m_LookUpFrequencyIndex[1.76]        = 31; // 1.76 MHz
+
+  this->m_LookUpBandPassFilerIndexGP35.clear();
+  this->m_LookUpBandPassFilerIndexGP35[2.87] = 0;
+  this->m_LookUpBandPassFilerIndexGP35[3.37] = 1;
+  this->m_LookUpBandPassFilerIndexGP35[3.87] = 2;
+  this->m_LookUpBandPassFilerIndexGP35[4.37] = 3;
+
+  this->m_LookUpBandPassFilerIndexGP75.clear();
+  this->m_LookUpBandPassFilerIndexGP75[5.75] = 0;
+  this->m_LookUpBandPassFilerIndexGP75[6.75] = 1;
+  this->m_LookUpBandPassFilerIndexGP75[7.75] = 2;
+  this->m_LookUpBandPassFilerIndexGP75[8.75] = 3;
 
 }
 
