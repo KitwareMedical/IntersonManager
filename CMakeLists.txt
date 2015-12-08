@@ -68,7 +68,7 @@ if( LIBUSB_FOUND )
   # Test program for US spectroscopy
 
   # Project CypressManager
-  set( USSpectrascopy_SOURCES ${CMAKE_SOURCE_DIR}/USSpectrascopy.cpp
+  set( USSpectroscopy_SOURCES ${CMAKE_SOURCE_DIR}/USSpectroscopy.cpp
                               ${CMAKE_SOURCE_DIR}/IntersonManager.cpp
                               ${CMAKE_SOURCE_DIR}/IntersonManager.h
                               ${CMAKE_SOURCE_DIR}/IntersonManagerTest.cpp
@@ -77,13 +77,13 @@ if( LIBUSB_FOUND )
                               )
 
   # Create target
-  add_executable( USSpectrascopy ${USSpectrascopy_SOURCES} )
+  add_executable( USSpectroscopy ${USSpectroscopy_SOURCES} )
 
   # Link against libusb libraries
   if( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
-    target_link_libraries( USSpectrascopy ${LIBUSB_LIBRARIES} ${ITK_LIBRARIES} )
+    target_link_libraries( USSpectroscopy ${LIBUSB_LIBRARIES} ${ITK_LIBRARIES} )
   else( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
-    target_link_libraries( USSpectrascopy ${LIBUSB_LIBRARIES} ${ITK_LIBRARIES} pthread )
+    target_link_libraries( USSpectroscopy ${LIBUSB_LIBRARIES} ${ITK_LIBRARIES} pthread )
   endif( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
 
 

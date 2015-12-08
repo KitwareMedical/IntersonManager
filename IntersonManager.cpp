@@ -7,20 +7,18 @@
 #include "IntersonManager.h"
 
 #include <time.h>
+#include <fstream>
 
 #ifndef ARRAYSIZE
 #define ARRAYSIZE(A) (sizeof(A)/sizeof((A)[0]))
 #endif
 
 libusb_device_handle * m_gUSBHandle;
+libusb_context* m_gUSBContex;
 IntersonManager* m_gIntersonManager;
 
-clock_t begin_time;
+int gFrameNumber;
 
-unsigned char endpoint = 0x82;
-unsigned char * buffer;// = new unsigned char[transferSize];
-int transferred = 1;
-int transferSize = 241*1024;
 
 void LibUSBTransferCallback(struct libusb_transfer * transfer)
 {
@@ -31,6 +29,7 @@ IntersonManager::IntersonManager()
 {
   this->m_IsLibUSBConnected = false;
   IntersonManager("IntersonFMW_total.bix");
+  gFrameNumber = 0;
 }
 
 IntersonManager::IntersonManager(const char* pathOfFirmware)
@@ -40,26 +39,12 @@ IntersonManager::IntersonManager(const char* pathOfFirmware)
   m_gIntersonManager = this;
 }
 
-IntersonManager::IntersonManager(libusb_device_handle * handle)
-{
-  if(handle != NULL)
-  {
-    m_gUSBHandle = handle;
-  }
-  else
-  {
-    std::cerr<<"Invalid handle passed"<<std::endl;
-  }
-  setVerbose(false);
-  m_gIntersonManager = this;
-}
 
 IntersonManager::~IntersonManager()
 {
   if(this->m_IsLibUSBConnected)
     {
-    ReleaseUSBInterface();
-    ExitLibUSB();
+    this->CloseLibUSB();
     }
 }
 
@@ -140,6 +125,7 @@ bool IntersonManager::initializeMotorSpeed(uInt8 speedArray[7])
     data[0] = speedArray[i];
     // If one of the transfer fails, r will be equal to 0 at the end
     r = libusb_control_transfer(m_gUSBHandle, 0x40, 0xD8, wValue+i, 0x00, data, wLength, VENDORCMD_TIMEOUT);
+    //r = libusb_control_transfer(GetUSBHandle(), 0x40, 0xD8, wValue+i, 0x00, data, wLength, VENDORCMD_TIMEOUT);
     // Check if they are sent correctly
     if ( r != 1 )
     {
@@ -740,10 +726,111 @@ bool IntersonManager::initializeProbe()
   return true;
 }
 
+bool IntersonManager::initializeProbeRFMode()
+{
+
+  // Set Frequency addr = 0x101 to '0' and addr = 0x300 to '0'
+  if(!setFrequencyInit())
+    {
+    std::cerr << "Failed setFrequencyInit()" << std::endl;
+    }
+
+  // Initialize Analog TGC
+  uInt8 * analogTGC = new uInt8[3];
+  if(!initializeAnalogTGC(analogTGC))
+    {
+    std::cerr << "Failed initializeAnalogTGC()" << std::endl;
+    }
+
+  // Initialize Digital TGC
+  uInt8 * digitalTGC = new uInt8[10];
+  if(!initializeDigitalTGC(digitalTGC))
+    {
+    std::cerr << "Failed initializeDigitalTGC()" << std::endl;
+    }
+
+  // Send Dynamic
+  if(!setDynamicRange())
+    {
+    std::cerr << "Failed setDynamicRange()" << std::endl;
+    }
+
+  // Read FPGA Version
+  uInt8 FPGAversion;
+  if(!readFPGAVersion(&FPGAversion))
+    {
+    std::cerr << "Failed readFPGAVersion()" << std::endl;
+    }
+  else
+    {
+    std::cout<<"FPGA Version = "<<std::hex<<+FPGAversion<<std::endl;
+    }
+
+
+  // Initialize Motor Speed
+
+////  uInt8 motorSpeed[] = {0xB9, 0x04, 0x00, 0x00, 0xB7, 0xA4, 0x32}; // 10.0 fps hex
+////  uInt8 motorSpeed[] = {0x93, 0x07, 0x00, 0x00, 0x93, 0xA4, 0x32}; // 12.5 fps hex
+    uInt8 motorSpeed[] = {0x7A, 0x0D, 0x00, 0x00, 0x80, 0xA4, 0x32}; // 15.0 fps hex
+    initializeMotorSpeed(motorSpeed);
+//  if(!this->setMotorSpeed(15.0f))
+//    {
+//    std::cerr << "Failed setMotorSpeed()" << std::endl;
+//    }
+
+
+  // Set Frequency addr = 0x100 (Frequency)
+
+  if(!setFrequencyIndex(2))
+    {
+    std::cerr << "Failed setFrequencyIndex()" << std::endl;
+    }
+     // 20 MHz
+//  setFrequencyIndex(1); // 15 MHz
+//  setFrequencyIndex(11); // 4.29 MHz
+  //setFrequencyIndex(14); // 3.53 MHz
+//  setFrequencyIndex(15); // 3.33 MHz
+//  setFrequencyIndex(19); // 2.73 MHz
+//  setFrequencyIndex(28); // 1.94 MHz
+
+
+  // Set Frequency addr = 0x400 (band pass Filter)
+  //  setFrequencyBandPassFilter(0); // 2.87MHz
+  //  setFrequencyBandPassFilter(1); // 3.37MHz
+  //  setFrequencyBandPassFilter(2); // 3.87MHz
+  //  setFrequencyBandPassFilter(3); // 4.37MHz
+  if(!setFrequencyBandPassFilter(2))
+    {
+    std::cerr << "Failed setFrequencyBandPassFilter()" << std::endl;
+    }
+
+  this->setEnableHighVoltage(true);
+  this->initializeSamplerInc();
+  // Send High Voltage
+  // API doc says param is a %
+  // Voltage should be between 0 and 178
+  if(!sendHighVoltage(100))
+    {
+    std::cerr << "Failed setFrequencyInit()" << std::endl;
+    }
+
+  this->m_IsLibUSBConnected = true;
+  return true;
+}
+
 // Set verbose, and returns the value
 void IntersonManager::setVerbose(bool verbose)
 {
   this->m_Verbose = verbose;
+
+  if(this->m_Verbose)
+    {
+      libusb_set_debug(m_gUSBContex, LIBUSB_LOG_LEVEL_DEBUG);
+    }
+  else
+    {
+      libusb_set_debug(m_gUSBContex, LIBUSB_LOG_LEVEL_NONE);
+    }
 }
 
 // TODO
@@ -771,7 +858,7 @@ bool IntersonManager::startAcquisitionRoutine(int acquisitionMode)
   // Enable RF decimator ( for probe 3.5MHz and RF acquisition)
   if(m_AcquisitionMode == 1)
   {
-    setEnableRFDecimator(true);
+    //setEnableRFDecimator(true);
   }
 
   // Initialize Sampler Inc
@@ -798,7 +885,7 @@ bool IntersonManager::startAcquisitionRoutine(int acquisitionMode)
 // This function stops the acquisition, using the Sequence of Initialization and Acquisition
 bool IntersonManager::stopAcquisitionRoutine()
 {
-  setVerbose(true);
+  //setVerbose(true);
 
 //  // Stop every active acquisition threads
 //  if(exec != null) {
@@ -822,6 +909,107 @@ bool IntersonManager::stopAcquisitionRoutine()
   return true;
 }
 
+//int IntersonManager::AcquireUSspectroscopyFrames(std::vector<int>& frequency, std::vector<int>& power)
+int IntersonManager::AcquireUSspectroscopyFrames(std::list<int>& frequency, std::list<int>& power)
+{
+
+  this->initializeProbeRFMode();
+  // Setting the Motor speed as 15 fps
+  this->setMotorSpeed(15.0f);
+
+  // Enable High Voltage
+  this->setEnableHighVoltage(true);
+
+  // 15 M samples/sec
+  this->setEnableRFDecimator(false);
+
+  // Initialize Sampler Inc
+  this->initializeSamplerInc();
+
+
+  // Run Motor
+  this->setStartMotor(true);
+  //sleep(1);
+  usleep(2e5);
+
+  this->collector.Start("07.Data_Set");
+  for(int findex = 0; findex < 3; ++findex)
+    {
+    for(int pindex = 0; pindex < 1; ++pindex)
+      {
+      gFrameNumber++;
+      AcquireUSspectroscopyFrame(1, 100);
+      }
+    }
+  this->collector.Stop("07.Data_Set");
+
+  // Stop Motor
+  this->setStartMotor(false);
+
+  // Disable High Voltage
+  this->setEnableHighVoltage(false);
+
+  this->setEnableRFDecimator(false);
+
+  this->stopAcquisitionRoutine();
+
+  this->collector.Report();
+  return 1;
+}
+
+int IntersonManager::AcquireUSspectroscopyFrame(int frequency, int power)
+{
+
+  //--- To de deleted
+  int nRows = 241;
+  int nColumn = 2048;
+  int FrameSize  = nRows * nColumn;
+  short* buffer = new short[FrameSize];
+  int DataSize = FrameSize*sizeof(short);
+  // ---
+
+  // 1. Set Frequency
+  this->setFrequencyIndex(frequency);
+  // 2. Set Power
+  this->sendHighVoltage(power);
+  // 3  Run Data
+  this->startRFMode();
+  // 4. Waiting for a new Frame (blocking mode)
+  int r = GetNewFrame((unsigned char*)buffer, DataSize);
+  // 5. Stop Data
+  this->stopAcquisition();
+
+
+  //--- To de deleted
+  std::string filepath = std::to_string(gFrameNumber)+std::string(".raw");
+  std::ofstream outfile(filepath.c_str(), std::ofstream::binary);
+  outfile.write((char*)buffer, DataSize);
+  outfile.close();
+  delete buffer;
+  buffer = NULL;
+  // ---
+
+  return 1;
+}
+
+
+int IntersonManager::GetNewFrame(unsigned char* buffer, int DataSize)
+{
+  int           transferred = 1;
+  int r = libusb_bulk_transfer(m_gUSBHandle, endpoint, buffer, DataSize, &transferred, VENDORCMD_TIMEOUT);
+
+  return r;
+}
+
+void IntersonManager::CloseLibUSB()
+{
+  std::cout << "ClodeLibUSB-0" << std::endl;
+  ReleaseUSBInterface();
+  std::cout << "ClodeLibUSB-1" << std::endl;
+  ExitLibUSB();
+  std::cout << "ClodeLibUSB-2" << std::endl;
+  this->m_IsLibUSBConnected = false;
+}
 
 // protected
 
@@ -851,17 +1039,30 @@ bool IntersonManager::ConnectIntersonUSProbe()
       }
     }
 
+  if(libusb_kernel_driver_active(m_gUSBHandle, 0) == 1)  //find out if kernel driver is attached
+  {
+    std::cout<<"Kernel Driver Active"<<std::endl;
+    if(libusb_detach_kernel_driver(m_gUSBHandle, 0) == 0) //detach it
+      {
+      std::cout<<"Kernel Driver Detached!"<<std::endl;
+      }
+    }
+
   libusb_set_configuration(m_gUSBHandle, 1);
   libusb_claim_interface(m_gUSBHandle, 0);
+
+  if(this->m_Verbose)
+  {
+    std::cerr << "Interson US Probe 3.5 is connected!" << std::endl;
+  }
 
   return true;
 }
 
-
 bool IntersonManager::TryConnectIntersonUSProbe()
 {
   InitializeLibUSB();
-  m_gUSBHandle = libusb_open_device_with_vid_pid(NULL, 0x1921, 0x0090);
+  m_gUSBHandle = libusb_open_device_with_vid_pid(m_gUSBContex, 0x1921, 0x0090);
 
  if(m_gUSBHandle == NULL)
     {
@@ -883,17 +1084,18 @@ bool IntersonManager::FindIntersonUSProbe()
   if (libusb_get_device_list(NULL, &devs) < 0)
     {
     std::cerr << "No USB Device" << std::endl;
-    ExitLibUSB();
+    this->ExitLibUSB();
     return this->m_IsLibUSBConnected = false;
     }
 
-  m_gUSBHandle = libusb_open_device_with_vid_pid(NULL, 0x1921, 0x9090);
+  m_gUSBHandle = libusb_open_device_with_vid_pid(m_gUSBContex, 0x1921, 0x9090);
+
   if (m_gUSBHandle == NULL)
-  {
+    {
     std::cerr << "libusb_open() failed\n" <<std::endl;
-    ExitLibUSB();
+    this->ExitLibUSB();
     return this->m_IsLibUSBConnected = false;
-  }
+    }
 
   /* We need to claim the first interface */
   libusb_set_auto_detach_kernel_driver(m_gUSBHandle, 1);
@@ -902,7 +1104,7 @@ bool IntersonManager::FindIntersonUSProbe()
   if (this->m_Status != LIBUSB_SUCCESS)
     {
     std::cerr << "libusb_claim_interface failed: %s\n" << libusb_error_name(this->m_Status) << std::endl;
-    ExitLibUSB();
+    this->ExitLibUSB();
     return this->m_IsLibUSBConnected = false;
     }
 
@@ -911,239 +1113,48 @@ bool IntersonManager::FindIntersonUSProbe()
 
 bool IntersonManager::UploadFirmwareToIntersonUSProbe(const char* path)
 {
-
   this->m_Status = ezusb_load_ram(m_gUSBHandle, this->m_PathOfFirmware.c_str(),
                                   3, IMG_TYPE_BIX, 0);
 
   if (this->m_Status < 0)
     {
       std::cerr<<"ezusb_load_ram() failed: "<< libusb_error_name(this->m_Status) << std::endl;
-      ExitLibUSB();
+      this->ExitLibUSB();
       return this->m_IsLibUSBConnected = false;
     }
-  ReleaseUSBInterface();
-  ExitLibUSB();
+
+  this->CloseLibUSB();
   this->m_IsLibUSBConnected = false;
   usleep(3e6);
   return true;
 }
 
-const bool IntersonManager::InitializeLibUSB()
+//const bool IntersonManager::InitializeLibUSB()
+bool IntersonManager::InitializeLibUSB()
 {
-  int status = libusb_init(NULL);
+  int status = libusb_init(&m_gUSBContex);
   if (status < 0)
     {
       std::cerr<<"libusb_init() failed: "<< libusb_error_name(status) << std::endl;
-      ExitLibUSB();
+      this->ExitLibUSB();
       return false;
     }
 
-  libusb_set_debug(NULL, verbose);
   return true;
 }
 
-const void IntersonManager::ExitLibUSB()
+//const void IntersonManager::ExitLibUSB()
+void IntersonManager::ExitLibUSB()
 {
-  libusb_exit(NULL);
+  libusb_exit(m_gUSBContex);
 }
 
-const void IntersonManager::ReleaseUSBInterface()
+//const void IntersonManager::ReleaseUSBInterface()
+void IntersonManager::ReleaseUSBInterface()
 {
   libusb_release_interface(m_gUSBHandle, 0);
   libusb_close(m_gUSBHandle);
 }
-
-void IntersonManager::PrintDevice()
-{
-  std::cout << "Print Device" << std::endl;
-  uint8_t string_index[3];
-  uint8_t path[8];
-  char string[128];
-
-  if(m_gUSBHandle != NULL)
-    {
-
-    libusb_device *dev = libusb_get_device(m_gUSBHandle);
-    printf("\n");
-    struct libusb_device_descriptor desc;
-    int r = libusb_get_device_descriptor(dev, &desc);
-    if (r < 0)
-      {
-      fprintf(stderr, "failed to get device descriptor");
-      return;
-      }
-
-    string_index[0] = desc.iManufacturer;
-    string_index[1] = desc.iProduct;
-    string_index[2] = desc.iSerialNumber;
-    printf("%04x:%04x (bus %d, device %d)",
-           desc.idVendor, desc.idProduct,
-           libusb_get_bus_number(dev), libusb_get_device_address(dev));
-
-    r = libusb_get_port_numbers(dev, path, sizeof(path));
-    if (r > 0) {
-      printf(" path: %d", path[0]);
-      for (int j = 1; j < r; j++)
-        printf(".%d", path[j]);
-    }
-    printf("\n");
-
-    libusb_device_handle *handle;
-    r = libusb_open(dev, &handle);
-
-    if(r == LIBUSB_ERROR_ACCESS)
-      {
-      std::cout<<" Insufficient permission"<<std::endl;
-      }
-
-    if (r == 0 && handle != NULL)
-      {
-      for (int k = 0; k < 3; k++)
-        {
-        if (string_index[k] == 0)
-          {
-          continue;
-          }
-        if (libusb_get_string_descriptor_ascii(handle, string_index[k], (unsigned char *) string, 128) >= 0)
-          {
-          printf("String Desc(0x%02X): \"%s\"\n", string_index[k], string);
-          }
-        }
-      libusb_close(handle);
-      }
-    }
-}
-
-int IntersonManager::AcquireUSspectroscopyFrames(int *frequencies, int *powers)
-{
-  this->collector.Start("01.Data_Set_With_MotorControl");
-
-  //buffer = new unsigned char[transferSize];
-  uInt8 motorSpeed15[] = {0x7A, 0x0D, 0x00, 0x00, 0x80, 0xA4, 0x32}; // 15.0 fps
-  this->collector.Start("02.initializeMotorSpeed");
-  this->initializeMotorSpeed(motorSpeed15);
-  this->collector.Stop("02.initializeMotorSpeed");
-
-//  int numberOfFrequency = ARRAYSIZE(frequencies);
-//  int numberOfPower     = ARRAYSIZE(powers);
-
-  int numberOfFrequency = 6;//(sizeof(frequencies)/sizeof(int));
-  int numberOfPower     = 6;//(sizeof(powers)/sizeof(int));
-
-  std::cout << numberOfFrequency << std::endl;
-  std::cout << numberOfPower << std::endl;
-
-  // Enable High Voltage
-  this->collector.Start("03.setEnableHighVoltage_true");
-  this->setEnableHighVoltage(true);
-  this->collector.Stop("03.setEnableHighVoltage_true");
-
-  // Enable RF decimator ( for probe 3.5MHz and RF acquisition)
-  if(m_AcquisitionMode == 1)
-    {
-    this->collector.Start("04.setEnableRFDecimator_true");
-    this->setEnableRFDecimator(true);
-    this->collector.Stop("04.setEnableRFDecimator_true");
-    }
-
-  // Initialize Sampler Inc
-  this->collector.Start("05.initializeSamplerInc");
-  this->initializeSamplerInc();
-  this->collector.Stop("05.initializeSamplerInc");
-
-  // Run Motor
-  this->collector.Start("06.setStartMotor_Start");
-  this->setStartMotor(true);
-  sleep(1);
-  this->collector.Stop("06.setStartMotor_Start");
-
-  this->collector.Start("07.Data_Set");
-  for(int findex = 0; findex < 5; ++findex)
-    {
-    for(int pindex = 0; pindex < 1; ++pindex)
-      {
-      AcquireUSspectroscopyFrame(frequencies[findex], powers[pindex]);
-      //std::cout << frequencies[findex] <<  powers[pindex] <<std::endl;
-      }
-    }
-  this->collector.Stop("07.Data_Set");
-
-
-  // Stop Motor
-  this->collector.Start("14.setStartMotor_Stop");
-  this->setStartMotor(false);
-  this->collector.Stop("14.setStartMotor_Stop");
-
-  // Disable High Voltage
-  this->collector.Start("15.setEnableHighVoltage_false");
-  this->setEnableHighVoltage(false);
-  this->collector.Stop("15.setEnableHighVoltage_false");
-
-  // Disable RF decimator ( if done with RF acquisition)
-  if(m_AcquisitionMode == 1)
-    {
-    this->collector.Start("16.setEnableRFDecimator_false");
-    setEnableRFDecimator(false);
-    this->collector.Stop("16.setEnableRFDecimator_false");
-    }
-
-  this->collector.Stop("01.Data_Set_With_MotorControl");
-  this->collector.Report();
-  return 1;
-}
-
-int IntersonManager::AcquireUSspectroscopyFrame(int frequency, int power)
-{
-  this->collector.Start("08.Single_Frame");
-  // Terminal max size
-  int maxTermRow = 25;
-  int maxTermColumn = 25;
-  int nRows = 241;
-  int nColumn = 1024;
-
-  unsigned char endpoint = 0x82;
-  unsigned int BULK_TRANSFER_TIMEOUT = 1000;
-  buffer = new unsigned char[transferSize];
-
-  // 1. Set Frequency
-  this->collector.Start("09.SetFrequency");
-  this->setFrequencyIndex(frequency);
-  this->collector.Stop("09.SetFrequency");
-  // 2. Set Power
-  this->collector.Start("10.SetPower");
-  this->sendHighVoltage(power);
-  this->collector.Stop("10.SetPower");
-  // 3  Run Data
-  this->collector.Start("11.RunRFMode");
-  this->startRFMode();
-  this->collector.Stop("11.RunRFMode");
-  // 4. Waiting for a new Frame (blocking mode)
-  this->collector.Start("12.GetFrame");
-  int r = libusb_bulk_transfer(m_gUSBHandle, endpoint, buffer, transferSize, &transferred, BULK_TRANSFER_TIMEOUT);
-  this->collector.Stop("12.GetFrame");
-  std::cout << "Output::" << r <<", "<< transferred<<", " <<  std::endl;
-
-  // Overview of the frame
-//    for (int k = 0; k < nRows * nColumn; k += nColumn*(nRows/maxTermRow))
-//    {
-//      for (int j = 0; j < nColumn; j+= nColumn/maxTermColumn)
-//      {
-//        std::cout << +buffer[k+j] << " ";
-//      }
-//      std::cout << std::endl;
-//    }
-//    std::cout << std::endl;
-  // 5. Stop Data
-  this->collector.Start("13.StopRFMode");
-  this->stopAcquisition();
-  this->collector.Stop("13.StopRFMode");
-  delete buffer;
-  buffer = NULL;
-  this->collector.Stop("08.Single_Frame");
-
-  return 1;
-}
-
 
 void IntersonManager::InitializeLookupTables()
 {

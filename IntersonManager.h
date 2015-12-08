@@ -11,6 +11,8 @@
 #include "ezusb.h"
 #include <map>
 #include "itkTimeProbesCollectorBase.h"
+#include <vector>
+#include <list>
 
 
 typedef uint8_t uInt8;
@@ -24,7 +26,7 @@ public:
 
   IntersonManager();
   IntersonManager(const char* pathOfFirmware);
-  IntersonManager(libusb_device_handle * handle);
+//  IntersonManager(libusb_device_handle * handle);
 
   virtual ~IntersonManager();
 
@@ -56,15 +58,24 @@ public:
   void Error(int err);
   libusb_device_handle * getHandle() ;
   bool initializeProbe();
+  bool initializeProbeRFMode();
   void setVerbose(bool verbose);
   bool startAcquisitionRoutine(int acquisitionMode);
   bool stopAcquisitionRoutine();
 
-  void PrintDevice();
 
-  int AcquireUSspectroscopyFrames(int frequency[], int* power);
+  //int AcquireUSspectroscopyFrames(int* frequencies, int* powers);
+//  int AcquireUSspectroscopyFrames(std::vector<int>& frequency, std::vector<int>& power);
+  int AcquireUSspectroscopyFrames(std::list<int>& frequency, std::list<int>& power);
 
   int AcquireUSspectroscopyFrame(int frequency, int power);
+
+
+  //libusb_device_handle * GetUSBHandle();
+
+  int GetNewFrame(unsigned char* buffer, int DataSize);
+
+  void CloseLibUSB();
 
 protected:
 
@@ -76,11 +87,12 @@ protected:
 
   bool UploadFirmwareToIntersonUSProbe(const char* path);
 
-  static const bool InitializeLibUSB();
 
-  static const void ExitLibUSB();
+  bool InitializeLibUSB();
 
-  static const void ReleaseUSBInterface();
+  void ExitLibUSB();
+
+  void ReleaseUSBInterface();
 
   void InitializeLookupTables();
 
@@ -91,11 +103,14 @@ private:
   int                   m_Status;
   bool                  m_IsLibUSBConnected;
   static const int      VENDORCMD_TIMEOUT = 1000;
+  static const unsigned char endpoint     = 0x82;
   std::map<float, int>  m_LookUpFrequencyIndex;
   std::map<float, int>  m_LookUpBandPassFilerIndexGP35;
   std::map<float, int>  m_LookUpBandPassFilerIndexGP75;
 
   itk::TimeProbesCollectorBase   collector;
+
+
 
 
 };
