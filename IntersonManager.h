@@ -8,18 +8,28 @@
 
 #include <iostream>
 #include <libusb.h>
+#include "ezusb.h"
+#include <map>
+#include "itkTimeProbesCollectorBase.h"
+#include <vector>
+#include <list>
+
 
 typedef uint8_t uInt8;
 typedef uint16_t uInt16;
 typedef uint32_t uInt32;
-
 
 class IntersonManager
 {
 
 public:
 
-  IntersonManager(libusb_device_handle * handle);
+  IntersonManager();
+  IntersonManager(const char* pathOfFirmware);
+//  IntersonManager(libusb_device_handle * handle);
+
+  virtual ~IntersonManager();
+
 
   // Interson-specific control requests
 
@@ -46,18 +56,62 @@ public:
 
   // Routine and helper functions
   void Error(int err);
-  libusb_device_handle * getHandle() const;
+  libusb_device_handle * getHandle() ;
   bool initializeProbe();
+  bool initializeProbeRFMode();
   void setVerbose(bool verbose);
   bool startAcquisitionRoutine(int acquisitionMode);
   bool stopAcquisitionRoutine();
 
-private:
 
-  libusb_device_handle * m_Handle;
-  static const int VENDORCMD_TIMEOUT = 1000;
-  bool m_Verbose;
-  int m_AcquisitionMode;
+  //int AcquireUSspectroscopyFrames(int* frequencies, int* powers);
+//  int AcquireUSspectroscopyFrames(std::vector<int>& frequency, std::vector<int>& power);
+  int AcquireUSspectroscopyFrames(std::list<int>& frequency, std::list<int>& power);
+
+  int AcquireUSspectroscopyFrame(int frequency, int power);
+
+
+  //libusb_device_handle * GetUSBHandle();
+
+  int GetNewFrame(unsigned char* buffer, int DataSize);
+
+  void CloseLibUSB();
+
+protected:
+
+  bool ConnectIntersonUSProbe();
+
+  bool TryConnectIntersonUSProbe();
+
+  bool FindIntersonUSProbe();
+
+  bool UploadFirmwareToIntersonUSProbe(const char* path);
+
+
+  bool InitializeLibUSB();
+
+  void ExitLibUSB();
+
+  void ReleaseUSBInterface();
+
+  void InitializeLookupTables();
+
+private:
+  std::string           m_PathOfFirmware;
+  bool                  m_Verbose;
+  int                   m_AcquisitionMode;
+  int                   m_Status;
+  bool                  m_IsLibUSBConnected;
+  static const int      VENDORCMD_TIMEOUT = 1000;
+  static const unsigned char endpoint     = 0x82;
+  std::map<float, int>  m_LookUpFrequencyIndex;
+  std::map<float, int>  m_LookUpBandPassFilerIndexGP35;
+  std::map<float, int>  m_LookUpBandPassFilerIndexGP75;
+
+  itk::TimeProbesCollectorBase   collector;
+
+
+
 
 };
 

@@ -5,6 +5,9 @@
 
 cmake_minimum_required( VERSION 2.8 )
 
+find_package(ITK REQUIRED)
+include(${ITK_USE_FILE})
+
 # Set up project
 set( PROJECT_NAME "IntersonManager" )
 project( ${PROJECT_NAME} )
@@ -27,6 +30,9 @@ find_package( LibUSB REQUIRED )
 #  set( CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fPIE -pie" )
 #endif( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
 
+set(EZUSB_SOURCE ${CMAKE_SOURCE_DIR}/ezusb.c
+                 ${CMAKE_SOURCE_DIR}/ezusb.h)
+
 if( LIBUSB_FOUND )
   message( STATUS "LibUSB found.\n"
                   "LIBUSB_HEADER_FILE = ${LIBUSB_HEADER_FILE}\n"
@@ -44,6 +50,7 @@ if( LIBUSB_FOUND )
                                ${CMAKE_SOURCE_DIR}/IntersonManager.h
                                ${CMAKE_SOURCE_DIR}/IntersonManagerTest.cpp
                                ${CMAKE_SOURCE_DIR}/IntersonManagerTest.h
+                               ${EZUSB_SOURCE}
                                )
 
   # Create target
@@ -52,10 +59,33 @@ if( LIBUSB_FOUND )
 
   # Link against libusb libraries
   if( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
-    target_link_libraries( ${TARGET_NAME} ${LIBUSB_LIBRARIES} )
+    target_link_libraries( ${TARGET_NAME} ${LIBUSB_LIBRARIES} ${ITK_LIBRARIES} )
   else( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
-    target_link_libraries( ${TARGET_NAME} ${LIBUSB_LIBRARIES} pthread )
+    target_link_libraries( ${TARGET_NAME} ${LIBUSB_LIBRARIES} ${ITK_LIBRARIES} pthread )
   endif( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
+
+
+  # Test program for US spectroscopy
+
+  # Project CypressManager
+  set( USSpectroscopy_SOURCES ${CMAKE_SOURCE_DIR}/USSpectroscopy.cpp
+                              ${CMAKE_SOURCE_DIR}/IntersonManager.cpp
+                              ${CMAKE_SOURCE_DIR}/IntersonManager.h
+                              ${CMAKE_SOURCE_DIR}/IntersonManagerTest.cpp
+                              ${CMAKE_SOURCE_DIR}/IntersonManagerTest.h
+                              ${EZUSB_SOURCE}
+                              )
+
+  # Create target
+  add_executable( USSpectroscopy ${USSpectroscopy_SOURCES} )
+
+  # Link against libusb libraries
+  if( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
+    target_link_libraries( USSpectroscopy ${LIBUSB_LIBRARIES} ${ITK_LIBRARIES} )
+  else( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
+    target_link_libraries( USSpectroscopy ${LIBUSB_LIBRARIES} ${ITK_LIBRARIES} pthread )
+  endif( ${CMAKE_SYSTEM_NAME} STREQUAL Android )
+
 
   # Build libusb samples
 

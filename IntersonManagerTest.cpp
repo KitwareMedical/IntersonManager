@@ -17,16 +17,16 @@
 IntersonManagerTest::IntersonManagerTest(IntersonManager * manager)
 {
   if(manager != NULL)
-  {
+    {
     this->m_IntMng = manager;
-  }
+    this->m_IntMng->setVerbose(true);
+    this->m_IntMng->initializeProbe();
+    }
   else
-  {
+    {
     std::cerr<<"Null pointer passed. Initialize the IntersonManager before passing it."<<std::endl;
-  }
-  this->m_IntMng = manager;
-  this->m_IntMng->setVerbose(true);
-  this->m_IntMng->initializeProbe();
+    }
+
 }
 
 IntersonManagerTest::~IntersonManagerTest()
